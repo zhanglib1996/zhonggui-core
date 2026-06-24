@@ -1,0 +1,20 @@
+type: tool
+name: run_shell
+description: >-
+  执行 Shell 命令并返回结果。
+  适用于系统操作、文件管理、进程管理等任务。
+  支持 bash 命令语法。
+
+input_schema:
+  type: object
+  properties:
+    command:
+      type: string
+      description: 要执行的 Shell 命令
+  required:
+    - command
+  additionalProperties: false
+
+defer_loading: false
+search_hint: "shell bash command execute"
+formatter: markdown

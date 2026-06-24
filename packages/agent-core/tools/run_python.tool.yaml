@@ -1,0 +1,20 @@
+type: tool
+name: run_python
+description: >-
+  执行 Python 代码并返回结果。
+  适用于数据计算、文件处理、数据分析等任务。
+  支持导入标准库和第三方库。
+
+input_schema:
+  type: object
+  properties:
+    code:
+      type: string
+      description: 要执行的 Python 代码
+  required:
+    - code
+  additionalProperties: false
+
+defer_loading: false
+search_hint: "python code execute run"
+formatter: markdown

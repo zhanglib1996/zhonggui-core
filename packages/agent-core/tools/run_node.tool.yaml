@@ -1,0 +1,20 @@
+type: tool
+name: run_node
+description: >-
+  执行 Node.js 代码并返回结果。
+  适用于 JavaScript/TypeScript 任务、API 调用等。
+  支持 ES 模块语法。
+
+input_schema:
+  type: object
+  properties:
+    code:
+      type: string
+      description: 要执行的 Node.js 代码
+  required:
+    - code
+  additionalProperties: false
+
+defer_loading: false
+search_hint: "node javascript typescript execute"
+formatter: markdown

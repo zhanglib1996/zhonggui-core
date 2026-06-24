@@ -1,0 +1,64 @@
+# zhonggui-core 一键部署
+# 使用: docker compose up -d
+
+services:
+  # PostgreSQL with pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: zhonggui-core-postgres
+    environment:
+      POSTGRES_DB: zhonggui_core
+      POSTGRES_USER: zhonggui
+      POSTGRES_PASSWORD: zhongg...n
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhonggui -d zhonggui_core"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Valkey (Redis 兼容)
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: zhonggui-core-valkey
+    network_mode: host
+    restart: unless-stopped
+
+  # zhonggui-core 服务
+  core:
+    image: zhonggui-core:latest
+    container_name: zhonggui-core-server
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      PG_HOST: host.docker.internal
+      PG_PORT: 5433
+      PG_DATABASE: zhonggui_core
+      PG_USER: zhonggui
+      PG_PASSWORD: zhongg...n
+      VALKEY_HOST: 127.0.0.1
+      VALKEY_PORT: 6380
+      MODEL_NAME: mimo-v2.5-pro
+      MODEL_PROVIDER: openai
+      MODEL_BASE_URL: https://token-plan-cn.xiaomimimo.com/v1
+      MODEL_API_KEY: tp-cu7...8ux
+      JWT_SECRET: dev-jwt-secret-zhonggui-core-2026
+      REFRESH_SECRET: dev-refresh-secret-zhonggui-core-2026
+      DEV_AUTH_BYPASS: "true"
+      ADMIN_USERS: admin
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:

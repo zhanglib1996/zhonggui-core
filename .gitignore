@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+packages/*/dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test coverage
+coverage/
+.vitest/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar.gz
+
+# Temp files
+tmp/
+.tmp/
