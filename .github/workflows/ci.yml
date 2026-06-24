@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Debug workspace links
+        run: |
+          ls -la packages/agent-core/node_modules/@zhonggui/ 2>/dev/null || echo "No @zhonggui links found"
+          ls -la node_modules/@zhonggui/ 2>/dev/null || echo "No root @zhonggui links found"
+
       - name: Typecheck
         run: pnpm run typecheck
 
