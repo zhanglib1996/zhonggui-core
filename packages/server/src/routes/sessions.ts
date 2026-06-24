@@ -62,7 +62,7 @@ export function createSessionsRouter(getSessionManager: () => SessionManager): R
    * 返回会话详情（含消息历史）
    */
   router.get('/sessions/:id', async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     try {
       const sm = getSessionManager();
@@ -82,7 +82,7 @@ export function createSessionsRouter(getSessionManager: () => SessionManager): R
    * DELETE /sessions/:id
    */
   router.delete('/sessions/:id', async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     try {
       const sm = getSessionManager();

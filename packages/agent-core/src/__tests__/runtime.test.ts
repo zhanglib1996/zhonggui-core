@@ -105,23 +105,112 @@ function createBaseOptions(overrides: Partial<AgentOptions> = {}): AgentOptions 
   };
 }
 
-// ─── Mock fetch ───
+// ─── Mock fetch (SSE streaming) ───
+
+function buildSSEStream(chunks: string[]): ReadableStream {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[index]));
+        index++;
+      } else {
+        controller.close();
+      }
+    },
+  });
+}
 
 function mockFetchLLMResponse(content: string, toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>) {
+  const sseChunks: string[] = [];
+
+  if (toolCalls && toolCalls.length > 0) {
+    // First chunk: role
+    sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n`);
+    // Content chunk
+    if (content) {
+      sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+    }
+    // Tool call chunks
+    for (const tc of toolCalls) {
+      sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(tc.arguments) } }] } }] })}\n\n`);
+    }
+    // Finish
+    sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 100, completion_tokens: 50 } })}\n\n`);
+  } else {
+    // Simple text response
+    sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n`);
+    sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+    sseChunks.push(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 50 } })}\n\n`);
+  }
+  sseChunks.push('data: [DONE]\n\n');
+
+  const body = buildSSEStream(sseChunks);
   const mockResponse = {
     ok: true,
-    json: vi.fn().mockResolvedValue({
-      choices: [{ message: { role: 'assistant', content, tool_calls: toolCalls?.map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(tc.arguments) } })) } }],
-      usage: { prompt_tokens: 100, completion_tokens: 50 },
-    }),
+    status: 200,
+    body,
     text: vi.fn().mockResolvedValue(''),
+    json: vi.fn(),
   };
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse));
   return mockResponse;
 }
 
 function mockFetchError(status: number, errorText: string) {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, text: vi.fn().mockResolvedValue(errorText), json: vi.fn() }));
+  // 错误响应也需要 body（含空 SSE 流），否则 StreamBridge 永远不会关闭
+  const body = buildSSEStream([]);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false,
+    status,
+    text: vi.fn().mockResolvedValue(errorText),
+    json: vi.fn(),
+    body,
+  }));
+}
+
+/** Build an SSE-formatted response object for inline fetch mocks */
+function sseResponse(choices: Array<{ delta?: Record<string, unknown>; message?: Record<string, unknown>; finish_reason?: string }>, usage?: { prompt_tokens: number; completion_tokens: number }) {
+  const chunks: string[] = [];
+  for (const choice of choices) {
+    chunks.push(`data: ${JSON.stringify({ choices: [{ delta: choice.delta ?? choice.message ?? {} }] })}\n\n`);
+  }
+  const last = choices[choices.length - 1];
+  if (last?.finish_reason) {
+    const payload: Record<string, unknown> = { choices: [{ delta: {}, finish_reason: last.finish_reason }] };
+    if (usage) payload.usage = usage;
+    chunks.push(`data: ${JSON.stringify(payload)}\n\n`);
+  }
+  chunks.push('data: [DONE]\n\n');
+  return {
+    ok: true,
+    status: 200,
+    body: buildSSEStream(chunks),
+    text: async () => '',
+    json: async () => ({}),
+  };
+}
+
+/** Build an SSE response with tool_calls delta */
+function sseToolCallResponse(toolCalls: Array<{ id: string; name: string; arguments: string }>, usage?: { prompt_tokens: number; completion_tokens: number }) {
+  const chunks: string[] = [];
+  chunks.push(`data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n`);
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i];
+    chunks.push(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: i, id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.arguments } }] } }] })}\n\n`);
+  }
+  const payload: Record<string, unknown> = { choices: [{ delta: {}, finish_reason: 'tool_calls' }] };
+  if (usage) payload.usage = usage;
+  chunks.push(`data: ${JSON.stringify(payload)}\n\n`);
+  chunks.push('data: [DONE]\n\n');
+  return {
+    ok: true,
+    status: 200,
+    body: buildSSEStream(chunks),
+    text: async () => '',
+    json: async () => ({}),
+  };
 }
 
 // ─── 辅助 ───
@@ -183,9 +272,9 @@ describe('createAgentRuntime', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
       if (callCount === 1) {
-        return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'run_python', arguments: JSON.stringify({ code: 'print(1)' }) } }] } }], usage: { prompt_tokens: 50, completion_tokens: 20 } }), text: async () => '' };
+        return sseToolCallResponse([{ id: 'tc-1', name: 'run_python', arguments: JSON.stringify({ code: 'print(1)' }) }], { prompt_tokens: 50, completion_tokens: 20 });
       }
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'Done' } }], usage: { prompt_tokens: 80, completion_tokens: 10 } }), text: async () => '' };
+      return sseResponse([{ delta: { content: 'Done' } }, { finish_reason: 'stop' }], { prompt_tokens: 80, completion_tokens: 10 });
     }));
 
     const sandbox = createMockSandbox();
@@ -200,12 +289,12 @@ describe('createAgentRuntime', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
       if (callCount === 1) {
-        return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [
-          { id: 'tc-1', type: 'function', function: { name: 'run_python', arguments: JSON.stringify({ code: '1' }) } },
-          { id: 'tc-2', type: 'function', function: { name: 'run_shell', arguments: JSON.stringify({ command: 'echo' }) } },
-        ] } }], usage: { prompt_tokens: 50, completion_tokens: 20 } }), text: async () => '' };
+        return sseToolCallResponse([
+          { id: 'tc-1', name: 'run_python', arguments: JSON.stringify({ code: '1' }) },
+          { id: 'tc-2', name: 'run_shell', arguments: JSON.stringify({ command: 'echo' }) },
+        ], { prompt_tokens: 50, completion_tokens: 20 });
       }
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'Done' } }], usage: { prompt_tokens: 80, completion_tokens: 10 } }), text: async () => '' };
+      return sseResponse([{ delta: { content: 'Done' } }, { finish_reason: 'stop' }], { prompt_tokens: 80, completion_tokens: 10 });
     }));
 
     const events = await collectEvents(createAgentRuntime(createBaseOptions()));
@@ -231,12 +320,12 @@ describe('createAgentRuntime', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
       if (callCount === 1) {
-        return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [
-          { id: 'tc-1', type: 'function', function: { name: 'slow', arguments: '{}' } },
-          { id: 'tc-2', type: 'function', function: { name: 'fast', arguments: '{}' } },
-        ] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+        return sseToolCallResponse([
+          { id: 'tc-1', name: 'slow', arguments: '{}' },
+          { id: 'tc-2', name: 'fast', arguments: '{}' },
+        ], { prompt_tokens: 10, completion_tokens: 5 });
       }
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'Done' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+      return sseResponse([{ delta: { content: 'Done' } }, { finish_reason: 'stop' }], { prompt_tokens: 10, completion_tokens: 5 });
     }));
 
     const registry = createMockToolRegistry();
@@ -267,12 +356,12 @@ describe('createAgentRuntime', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
       if (callCount === 1) {
-        return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [
-          { id: 'tc-1', type: 'function', function: { name: 'slow', arguments: '{}' } },
-          { id: 'tc-2', type: 'function', function: { name: 'fast', arguments: '{}' } },
-        ] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+        return sseToolCallResponse([
+          { id: 'tc-1', name: 'slow', arguments: '{}' },
+          { id: 'tc-2', name: 'fast', arguments: '{}' },
+        ], { prompt_tokens: 10, completion_tokens: 5 });
       }
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'Done' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+      return sseResponse([{ delta: { content: 'Done' } }, { finish_reason: 'stop' }], { prompt_tokens: 10, completion_tokens: 5 });
     }));
 
     const registry = createMockToolRegistry();
@@ -301,8 +390,8 @@ describe('createAgentRuntime', () => {
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
-      if (callCount === 1) return { ok: false, status: 500, text: async () => 'fail' };
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'Recovered' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+      if (callCount === 1) return { ok: false, status: 500, text: async () => 'fail', body: buildSSEStream([]) };
+      return sseResponse([{ delta: { content: 'Recovered' } }, { finish_reason: 'stop' }], { prompt_tokens: 10, completion_tokens: 5 });
     }));
 
     const events = await collectEvents(createAgentRuntime(createBaseOptions({ modelRouter })));
@@ -320,9 +409,9 @@ describe('createAgentRuntime', () => {
   });
 
   it('should respect maxToolCalls limit', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'run_python', arguments: JSON.stringify({ code: '1' }) } }] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '',
-    }));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
+      sseToolCallResponse([{ id: 'tc-1', name: 'run_python', arguments: JSON.stringify({ code: '1' }) }], { prompt_tokens: 10, completion_tokens: 5 }),
+    ));
 
     const events = await collectEvents(createAgentRuntime(createBaseOptions({ maxToolCalls: 3 })));
     expect(events.filter((e) => e.type === 'tool_call').length).toBe(3);
@@ -333,8 +422,8 @@ describe('createAgentRuntime', () => {
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
-      if (callCount === 1) return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'unknown', arguments: '{}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'ok' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+      if (callCount === 1) return sseToolCallResponse([{ id: 'tc-1', name: 'unknown', arguments: '{}' }], { prompt_tokens: 10, completion_tokens: 5 });
+      return sseResponse([{ delta: { content: 'ok' } }, { finish_reason: 'stop' }], { prompt_tokens: 10, completion_tokens: 5 });
     }));
 
     const registry = createMockToolRegistry([]);
@@ -383,8 +472,8 @@ describe('createAgentRuntime', () => {
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       callCount++;
-      if (callCount === 1) return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'mcp_tool', arguments: '{"x":1}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
-      return { ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', content: 'ok' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), text: async () => '' };
+      if (callCount === 1) return sseToolCallResponse([{ id: 'tc-1', name: 'mcp_tool', arguments: '{"x":1}' }], { prompt_tokens: 10, completion_tokens: 5 });
+      return sseResponse([{ delta: { content: 'ok' } }, { finish_reason: 'stop' }], { prompt_tokens: 10, completion_tokens: 5 });
     }));
     const registry = createMockToolRegistry([]);
     registry.get = vi.fn().mockReturnValue(undefined);

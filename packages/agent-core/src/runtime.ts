@@ -539,6 +539,10 @@ export function createAgentRuntime(options: AgentOptions): AgentRuntime {
             bridge,
             overrideModel: effectiveOverride,
             signal,
+          }).catch((err) => {
+            // LLM 调用失败时，确保 bridge 关闭，否则 events() 会永远挂起
+            bridge.finish();
+            throw err;
           });
 
           // 通过 bridge 实时 yield text_delta 事件
