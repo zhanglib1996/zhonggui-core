@@ -4,7 +4,39 @@
 
 ---
 
-## 前置要求
+## 一键安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zhanglib1996/zhonggui-core/main/install.sh | bash
+```
+
+脚本会自动完成：Docker 安装、项目克隆、环境配置、镜像构建、服务启动。
+
+安装完成后访问 `http://localhost:3002`。
+
+### 常用参数
+
+```bash
+# 更新已有安装
+curl -fsSL https://raw.githubusercontent.com/zhanglib1996/zhonggui-core/main/install.sh | bash -s -- --update
+
+# 指定安装目录
+curl -fsSL ... | bash -s -- --install-dir /opt/zhonggui-core
+
+# 非交互模式（使用默认值）
+curl -fsSL ... | bash -s -- --non-interactive
+
+# 卸载
+curl -fsSL ... | bash -s -- --uninstall
+```
+
+---
+
+## 手动部署
+
+如果需要更精细的控制，可以按以下步骤手动部署。
+
+### 前置要求
 
 - Debian 12+ 或 Ubuntu 22.04+
 - 2 核 CPU / 4GB 内存 / 20GB 磁盘（推荐 4 核 / 8GB）
@@ -13,7 +45,7 @@
 
 ---
 
-## 第 1 步：安装 Docker
+### 第 1 步：安装 Docker
 
 ```bash
 sudo apt-get update
