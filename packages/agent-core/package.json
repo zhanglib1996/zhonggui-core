@@ -24,6 +24,8 @@
     "@earendil-works/pi-agent-core": "^0.79.1"
   },
   "devDependencies": {
+    "@zhonggui/data": "workspace:*",
+    "@zhonggui/shared": "workspace:*",
     "typescript": "^5.7.0",
     "tsup": "^8.0.0"
   },

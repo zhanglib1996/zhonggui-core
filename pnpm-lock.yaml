@@ -39,16 +39,16 @@ importers:
 
   packages/agent-core:
     dependencies:
+      nanoid:
+        specifier: ^5.0.0
+        version: 5.1.15
+    devDependencies:
       '@zhonggui/data':
         specifier: workspace:*
         version: link:../data
       '@zhonggui/shared':
         specifier: workspace:*
         version: link:../shared
-      nanoid:
-        specifier: ^5.0.0
-        version: 5.1.15
-    devDependencies:
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)
