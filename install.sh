@@ -41,7 +41,7 @@ DOCKER_CMD=""
 # Docker 命令包装：处理 docker 组权限
 run_docker() {
   if [[ -n "$DOCKER_CMD" ]]; then
-    $DOCKER_CMD "docker $*"
+    $DOCKER_CMD docker "$@"
   else
     docker "$@"
   fi
