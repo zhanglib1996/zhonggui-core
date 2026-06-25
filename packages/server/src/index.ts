@@ -405,7 +405,7 @@ async function main(): Promise<void> {
       }
       // 同时更新 agent_id
       await pool.query('UPDATE sessions SET agent_id = $1 WHERE id = $2', [agentId, sessionId]);
-      res.json({ id: sessionId, agentId });
+      res.json({ id: sessionId, sessionId, agentId });
     } catch (err) {
       console.error('[API] Failed to create session:', err);
       res.status(500).json({ error: 'Failed to create session' });

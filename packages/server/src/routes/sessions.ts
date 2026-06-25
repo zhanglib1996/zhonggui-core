@@ -50,7 +50,7 @@ export function createSessionsRouter(getSessionManager: () => SessionManager): R
     try {
       const sm = getSessionManager();
       const sessionId = await sm.create(userId);
-      res.status(201).json({ id: sessionId, userId });
+      res.status(201).json({ id: sessionId, sessionId, userId });
     } catch (err) {
       console.error('[Sessions] create error:', err);
       res.status(500).json({ error: 'Failed to create session' });
