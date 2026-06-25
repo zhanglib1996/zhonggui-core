@@ -23,7 +23,15 @@ export function createChatRouter(getRuntime: () => AgentRuntime): Router {
    *   data: [DONE]
    */
   router.post('/chat', async (req: Request, res: Response) => {
-    const { sessionId, userId, message, model } = req.body;
+    let { sessionId, userId, message, model } = req.body;
+
+    // 修复前端可能发送 "undefined" 字符串的情况
+    if (!sessionId || sessionId === 'undefined' || sessionId === 'null') {
+      sessionId = undefined;
+    }
+    if (!userId || userId === 'undefined' || userId === 'null') {
+      userId = undefined;
+    }
 
     if (!sessionId || !userId || !message) {
       res.status(400).json({

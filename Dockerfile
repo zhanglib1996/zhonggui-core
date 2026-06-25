@@ -58,11 +58,13 @@ COPY --from=builder /app/packages/data/src/migrations packages/data/src/migratio
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 zhonggui && \
-    adduser --system --uid 1001 zhonggui
+    adduser --system --uid 1001 --home /home/zhonggui zhonggui
 
 # 创建数据目录
 RUN mkdir -p /home/zhonggui/.zhonggui/memory /home/zhonggui/.zhonggui/skills && \
     chown -R zhonggui:zhonggui /home/zhonggui
+
+ENV HOME=/home/zhonggui
 
 # 切换用户
 USER zhonggui
