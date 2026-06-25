@@ -247,14 +247,16 @@ describe('createAgentRuntime', () => {
     expect(names).toContain('run_node');
   });
 
-  it('should yield text and done events for simple response', async () => {
+  it('should yield text_delta and done events for simple response', async () => {
     mockFetchLLMResponse('Hello!');
     const runtime = createAgentRuntime(createBaseOptions());
     const events = await collectEvents(runtime);
-    // run_start → text → run_end → done
+    // run_start → text_delta → run_end → done
     expect(events[0].type).toBe('run_start');
-    const textEvent = events.find((e) => e.type === 'text');
-    expect(textEvent!.content).toBe('Hello!');
+    const textDeltas = events.filter((e) => e.type === 'text_delta');
+    expect(textDeltas.length).toBeGreaterThan(0);
+    const fullText = textDeltas.map((e) => e.content).join('');
+    expect(fullText).toBe('Hello!');
     const done = events.find((e) => e.type === 'done');
     expect(done!.modelUsed).toBe('test-model');
     expect(events.some((e) => e.type === 'run_end')).toBe(true);
@@ -396,7 +398,8 @@ describe('createAgentRuntime', () => {
 
     const events = await collectEvents(createAgentRuntime(createBaseOptions({ modelRouter })));
     expect(modelRouter.degrade).toHaveBeenCalledWith('test-model');
-    expect(events.find((e) => e.type === 'text' && e.content === 'Recovered')).toBeDefined();
+    const recovered = events.filter((e) => e.type === 'text_delta').map((e) => e.content).join('');
+    expect(recovered).toContain('Recovered');
   });
 
   it('should respect maxConversationTurns', async () => {
