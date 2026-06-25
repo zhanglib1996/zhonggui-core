@@ -348,9 +348,13 @@ build_image() {
   info "构建 Docker 镜像（首次需要 3-5 分钟）..."
 
   cd "$INSTALL_DIR"
-  docker build --network host -t zhonggui-core:latest . >> "$LOG_FILE" 2>&1
-
-  success "镜像构建完成"
+  # 显示构建进度，同时记录到日志
+  if docker build --network host -t zhonggui-core:latest . 2>&1 | tee -a "$LOG_FILE"; then
+    success "镜像构建完成"
+  else
+    error "镜像构建失败，查看日志: $LOG_FILE"
+    return 1
+  fi
 }
 
 # ─── 启动服务 ───
