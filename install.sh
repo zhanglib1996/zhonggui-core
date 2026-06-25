@@ -8,6 +8,18 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ─── 管道模式修复：curl | bash 时 stdin 被管道占用，需要从终端读取 ───
+if [[ ! -t 0 ]]; then
+  if [[ -e /dev/tty ]]; then
+    exec 0</dev/tty
+  else
+    echo "[ERROR] 无法读取终端输入，请先下载脚本再执行:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/zhanglib1996/zhonggui-core/main/install.sh -o install.sh"
+    echo "  bash install.sh"
+    exit 1
+  fi
+fi
+
 # 错误处理：显示失败的行号和命令
 on_error() {
   local exit_code=$?
@@ -189,7 +201,7 @@ install_docker() {
   $SUDO apt-get install -y ca-certificates curl gnupg >> "$LOG_FILE" 2>&1 || die "安装基础依赖失败"
 
   $SUDO install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/$OS_ID/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+  curl -fsSL https://download.docker.com/linux/$OS_ID/gpg | $SUDO gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
   $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
 
   # 使用代号（如 bookworm）而非版本号（如 12）
