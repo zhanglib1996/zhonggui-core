@@ -6,10 +6,12 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: zhonggui-core-postgres
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: zhonggui_core
       POSTGRES_USER: zhonggui
-      POSTGRES_PASSWORD: zhongg...n
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
