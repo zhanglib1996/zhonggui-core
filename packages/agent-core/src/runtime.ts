@@ -545,9 +545,9 @@ export function createAgentRuntime(options: AgentOptions): AgentRuntime {
             throw err;
           });
 
-          // 通过 bridge 实时 yield text_delta 事件
+          // 通过 bridge 实时 yield text 事件
           for await (const delta of bridge.events()) {
-            yield { type: 'text_delta', content: delta };
+            yield { type: 'text', content: delta };
           }
 
           llmResult = await llmPromise;

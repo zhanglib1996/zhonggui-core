@@ -247,15 +247,15 @@ describe('createAgentRuntime', () => {
     expect(names).toContain('run_node');
   });
 
-  it('should yield text_delta and done events for simple response', async () => {
+  it('should yield text and done events for simple response', async () => {
     mockFetchLLMResponse('Hello!');
     const runtime = createAgentRuntime(createBaseOptions());
     const events = await collectEvents(runtime);
-    // run_start → text_delta → run_end → done
+    // run_start → text → run_end → done
     expect(events[0].type).toBe('run_start');
-    const textDeltas = events.filter((e) => e.type === 'text_delta');
-    expect(textDeltas.length).toBeGreaterThan(0);
-    const fullText = textDeltas.map((e) => e.content).join('');
+    const textEvents = events.filter((e) => e.type === 'text');
+    expect(textEvents.length).toBeGreaterThan(0);
+    const fullText = textEvents.map((e) => e.content).join('');
     expect(fullText).toBe('Hello!');
     const done = events.find((e) => e.type === 'done');
     expect(done!.modelUsed).toBe('test-model');
@@ -398,13 +398,13 @@ describe('createAgentRuntime', () => {
 
     const events = await collectEvents(createAgentRuntime(createBaseOptions({ modelRouter })));
     expect(modelRouter.degrade).toHaveBeenCalledWith('test-model');
-    const recovered = events.filter((e) => e.type === 'text_delta').map((e) => e.content).join('');
+    const recovered = events.filter((e) => e.type === 'text').map((e) => e.content).join('');
     expect(recovered).toContain('Recovered');
   });
 
   it('should respect maxConversationTurns', async () => {
     const session = createMockSession({
-      messages: Array.from({ length: 20 }, (_, i) => ({ id: `m${i}`, role: (i % 2 === 0 ? 'user' : 'assistant') as const, content: `msg${i}`, timestamp: new Date() })),
+      messages: Array.from({ length: 20 }, (_, i) => ({ id: `m${i}`, role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant', content: `msg${i}`, timestamp: new Date() })),
     });
     const events = await collectEvents(createAgentRuntime(createBaseOptions({ sessionManager: createMockSessionManager(session), maxConversationTurns: 5 })));
     expect(events[0].type).toBe('error');
