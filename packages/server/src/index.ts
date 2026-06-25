@@ -66,33 +66,50 @@ interface JwtPayload {
   exp?: number;
 }
 
-function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // 开发模式跳过认证
-  if (DEV_AUTH_BYPASS) {
-    // 从 header 或 query 中获取 userId，否则使用默认值
-    const userId = (req.headers['x-user-id'] as string) ?? req.query.userId ?? 'dev-user';
-    (req as any).userId = typeof userId === 'string' ? userId : 'dev-user';
-    (req as any).userRole = 'admin';
-    next();
-    return;
-  }
+function createAuthMiddleware(getPool: () => any) {
+  return async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
+    // 开发模式跳过认证
+    if (DEV_AUTH_BYPASS) {
+      const userId = (req.headers['x-user-id'] as string) ?? req.query.userId ?? 'dev-user';
+      (req as any).userId = typeof userId === 'string' ? userId : 'dev-user';
+      (req as any).userRole = 'admin';
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid Authorization header' });
-    return;
-  }
+      // 确保 dev-user 存在于数据库中
+      const pool = getPool();
+      if (pool && userId === 'dev-user') {
+        try {
+          await pool.query(
+            `INSERT INTO users (id, username, display_name, role)
+             VALUES ('dev-user', 'dev-user', '开发用户', 'admin')
+             ON CONFLICT (id) DO NOTHING`
+          );
+        } catch (err) {
+          // 忽略错误
+        }
+      }
 
-  const token = authHeader.slice(7);
+      next();
+      return;
+    }
 
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
-    (req as any).userId = payload.sub;
-    (req as any).userRole = payload.role ?? 'user';
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid or expired token' });
-  }
+    // JWT 认证
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Missing or invalid Authorization header' });
+      return;
+    }
+
+    const token = authHeader.slice(7);
+
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+      (req as any).userId = payload.sub;
+      (req as any).userRole = payload.role ?? 'user';
+      next();
+    } catch (err) {
+      res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  };
 }
 
 // ─── 本地沙箱实现（开发/测试用） ───
@@ -336,7 +353,7 @@ async function main(): Promise<void> {
   });
 
   // 认证中间件（/health 和 /auth 之后的所有路由需要认证）
-  app.use(authMiddleware);
+  app.use(createAuthMiddleware(() => pool));
 
   // GET /auth/me - 获取当前用户信息（需要认证）
   app.get('/auth/me', (req: Request, res: Response) => {
