@@ -36,6 +36,7 @@ DEFAULT_BRANCH="main"
 DEFAULT_INSTALL_DIR="$HOME/zhonggui-core"
 LOG_FILE="/tmp/zhonggui-install-$(date +%Y%m%d%H%M%S).log"
 SERVICE_PORT=3002
+DOCKER_CMD=""
 
 # ─── 颜色 ───
 RED='\033[0;31m'
@@ -182,7 +183,17 @@ check_system() {
 
 # ─── Docker 安装 ───
 check_docker() {
-  if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+  if command -v docker &>/dev/null; then
+    # 检查当前用户是否有 docker 权限
+    if docker info > /dev/null 2>&1; then
+      DOCKER_CMD=""
+    elif sg docker -c "docker info" > /dev/null 2>&1; then
+      DOCKER_CMD="sg docker -c"
+    elif $SUDO docker info > /dev/null 2>&1; then
+      DOCKER_CMD="$SUDO"
+    else
+      return 1
+    fi
     DOCKER_VERSION=$(docker --version | awk '{print $3}' | tr -d ',')
     success "Docker 已安装: $DOCKER_VERSION"
     return 0
@@ -214,11 +225,19 @@ install_docker() {
   # 将当前用户加入 docker 组
   if [[ $EUID -ne 0 ]]; then
     $SUDO usermod -aG docker "$USER"
-    warn "已将 $USER 加入 docker 组，可能需要重新登录才能生效"
-    warn "如果 docker 命令权限不足，请执行: newgrp docker"
+    # 立即生效：用 sg 切换到 docker 组运行后续命令
+    if sg docker -c "docker info" > /dev/null 2>&1; then
+      DOCKER_CMD="sg docker -c"
+      success "Docker 安装完成（docker 组已立即生效）"
+    else
+      # sg 不可用时，后续命令用 sudo
+      DOCKER_CMD="$SUDO"
+      success "Docker 安装完成（使用 sudo 执行 docker 命令）"
+    fi
+  else
+    DOCKER_CMD=""
+    success "Docker 安装完成"
   fi
-
-  success "Docker 安装完成"
 }
 
 # ─── 项目安装 ───
@@ -349,7 +368,7 @@ build_image() {
 
   cd "$INSTALL_DIR"
   # 显示构建进度，同时记录到日志
-  if docker build --network host -t zhonggui-core:latest . 2>&1 | tee -a "$LOG_FILE"; then
+  if eval "$DOCKER_CMD docker build --network host -t zhonggui-core:latest ." 2>&1 | tee -a "$LOG_FILE"; then
     success "镜像构建完成"
   else
     error "镜像构建失败，查看日志: $LOG_FILE"
@@ -364,10 +383,10 @@ start_services() {
   cd "$INSTALL_DIR"
 
   # 停止旧容器（如果有）
-  docker compose down >> "$LOG_FILE" 2>&1 || true
+  eval "$DOCKER_CMD docker compose down" >> "$LOG_FILE" 2>&1 || true
 
   # 启动所有服务
-  docker compose up -d >> "$LOG_FILE" 2>&1
+  eval "$DOCKER_CMD docker compose up -d" >> "$LOG_FILE" 2>&1
 
   success "服务启动完成"
 }
@@ -414,10 +433,10 @@ uninstall() {
 
   info "停止服务..."
   cd "$INSTALL_DIR"
-  docker compose down -v >> "$LOG_FILE" 2>&1 || true
+  eval "$DOCKER_CMD docker compose down -v" >> "$LOG_FILE" 2>&1 || true
 
   info "删除镜像..."
-  docker rmi zhonggui-core:latest >> "$LOG_FILE" 2>&1 || true
+  eval "$DOCKER_CMD docker rmi zhonggui-core:latest" >> "$LOG_FILE" 2>&1 || true
 
   info "删除文件..."
   rm -rf "$INSTALL_DIR"
