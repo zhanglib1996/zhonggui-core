@@ -8,16 +8,15 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# ─── 管道模式修复：curl | bash 时 stdin 被管道占用，需要从终端读取 ───
+# ─── 管道模式检测：curl | bash 时 stdin 被管道占用 ───
+# 解决方法：下载脚本到临时文件，然后从终端重新执行
 if [[ ! -t 0 ]]; then
-  if [[ -e /dev/tty ]]; then
-    exec 0</dev/tty
-  else
-    echo "[ERROR] 无法读取终端输入，请先下载脚本再执行:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/zhanglib1996/zhonggui-core/main/install.sh -o install.sh"
-    echo "  bash install.sh"
-    exit 1
-  fi
+  echo "[INFO] 检测到管道模式，正在下载脚本..."
+  _TMP_INSTALL=$(mktemp /tmp/zhonggui-install-XXXXXX.sh)
+  curl -fsSL https://raw.githubusercontent.com/zhanglib1996/zhonggui-core/main/install.sh -o "$_TMP_INSTALL"
+  chmod +x "$_TMP_INSTALL"
+  # 从 /dev/tty 重新执行，确保交互式输入正常工作
+  exec bash "$_TMP_INSTALL" "$@" </dev/tty
 fi
 
 # 错误处理：显示失败的行号和命令
