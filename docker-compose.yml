@@ -34,24 +34,13 @@ services:
     container_name: zhonggui-core-server
     ports:
       - "3002:3000"
+    env_file:
+      - .env
     environment:
-      NODE_ENV: development
-      PORT: 3000
-      PG_HOST: host.docker.internal
-      PG_PORT: 5433
-      PG_DATABASE: zhonggui_core
-      PG_USER: zhonggui
-      PG_PASSWORD: zhongg...n
+      PG_HOST: postgres
+      PG_PORT: 5432
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
-      MODEL_NAME: mimo-v2.5-pro
-      MODEL_PROVIDER: openai
-      MODEL_BASE_URL: https://token-plan-cn.xiaomimimo.com/v1
-      MODEL_API_KEY: tp-cu7...8ux
-      JWT_SECRET: dev-jwt-secret-zhonggui-core-2026
-      REFRESH_SECRET: dev-refresh-secret-zhonggui-core-2026
-      DEV_AUTH_BYPASS: "true"
-      ADMIN_USERS: admin
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
