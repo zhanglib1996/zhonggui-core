@@ -599,8 +599,7 @@ export function createAgentRuntime(options: AgentOptions): AgentRuntime {
 
         // 如果没有工具调用，输出文本并结束
         if (!assistantMsg.toolCalls || assistantMsg.toolCalls.length === 0) {
-          const textEvent: StreamEvent = { type: 'text', content: assistantMsg.content };
-          yield textEvent;
+          // 不再发送 text 事件，避免与 text_delta 重复
           const totalTokens = llmResult.usage
             ? llmResult.usage.inputTokens + llmResult.usage.outputTokens
             : undefined;
