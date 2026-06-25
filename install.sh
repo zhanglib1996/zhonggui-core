@@ -8,6 +8,17 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# 错误处理：显示失败的行号和命令
+on_error() {
+  local exit_code=$?
+  local line_no=$1
+  echo ""
+  error "安装失败 (行 $line_no, 退出码 $exit_code)"
+  error "查看详细日志: $LOG_FILE"
+  exit $exit_code
+}
+trap 'on_error $LINENO' ERR
+
 # ─── 配置 ───
 REPO_URL="https://github.com/zhanglib1996/zhonggui-core.git"
 DEFAULT_BRANCH="main"
@@ -118,6 +129,7 @@ check_system() {
     . /etc/os-release
     OS_ID="$ID"
     OS_VERSION="$VERSION_ID"
+    OS_CODENAME="${VERSION_CODENAME:-}"
   else
     die "无法检测操作系统，仅支持 Debian/Ubuntu"
   fi
@@ -170,18 +182,23 @@ check_docker() {
 install_docker() {
   info "安装 Docker..."
 
-  $SUDO apt-get update -qq >> "$LOG_FILE" 2>&1
-  $SUDO apt-get install -y -qq ca-certificates curl gnupg >> "$LOG_FILE" 2>&1
+  # 清理可能存在的旧锁文件
+  $SUDO rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null
+
+  $SUDO apt-get update >> "$LOG_FILE" 2>&1 || die "apt-get update 失败，请检查网络连接"
+  $SUDO apt-get install -y ca-certificates curl gnupg >> "$LOG_FILE" 2>&1 || die "安装基础依赖失败"
 
   $SUDO install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/$OS_ID/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
   $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
 
-  echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS_ID $OS_VERSION stable" | \
+  # 使用代号（如 bookworm）而非版本号（如 12）
+  local distro_codename="${OS_CODENAME:-$OS_VERSION}"
+  echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS_ID $distro_codename stable" | \
     $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-  $SUDO apt-get update -qq >> "$LOG_FILE" 2>&1
-  $SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin >> "$LOG_FILE" 2>&1
+  $SUDO apt-get update >> "$LOG_FILE" 2>&1 || die "Docker 源更新失败，请检查网络连接"
+  $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin >> "$LOG_FILE" 2>&1 || die "Docker 安装失败"
 
   # 将当前用户加入 docker 组
   if [[ $EUID -ne 0 ]]; then
